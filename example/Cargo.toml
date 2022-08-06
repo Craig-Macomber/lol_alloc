@@ -1,0 +1,18 @@
+[package]
+name = "lol_alloc_example"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/Craig-Macomber/lol_alloc"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies.lol_alloc]
+path = "../lol_alloc"
+default-features = false
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.0"
