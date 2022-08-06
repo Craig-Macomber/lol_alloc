@@ -1,0 +1,23 @@
+[package]
+name = "lol_alloc"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/Craig-Macomber/lol_alloc"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# [lib]
+# crate-type = ["cdylib", "rlib"]
+
+[features]
+allocation = []
+free = ["allocation"]
+sub-page = ["allocation"]
+default = ["allocation", "free", "sub-page"]
+# TODO: concurrency/atomic feature
+
+[dependencies]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.0"
