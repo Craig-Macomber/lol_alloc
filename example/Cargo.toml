@@ -12,7 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies.lol_alloc]
 path = "../lol_alloc"
-default-features = false
+# default-features = false
+# features = ["allocation","sub-page"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.0"

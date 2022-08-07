@@ -10,11 +10,11 @@ license = "MIT"
 # [lib]
 # crate-type = ["cdylib", "rlib"]
 
-[features]
-allocation = []
-free = ["allocation"]
-sub-page = ["allocation"]
-default = ["allocation", "free", "sub-page"]
+# [features]
+# allocation = []
+# free = ["allocation"]
+# sub-page = ["allocation"]
+# default = ["allocation", "free", "sub-page"]
 # TODO: concurrency/atomic feature
 
 [dependencies]

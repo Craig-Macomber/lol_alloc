@@ -2,10 +2,10 @@
 
 extern crate alloc;
 
-use lol_alloc::SimpleAllocator;
+use lol_alloc::ReusingPageAllocator;
 
 #[global_allocator]
-static ALLOCATOR: SimpleAllocator = SimpleAllocator::new();
+static ALLOCATOR: ReusingPageAllocator = ReusingPageAllocator::new();
 
 use alloc::boxed::Box;
 
