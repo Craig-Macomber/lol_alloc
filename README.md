@@ -21,8 +21,9 @@ and at least one allocator that actually frees and reuses memory properly (`Free
 
 # Status
 
-Current a few allocators are provided, but they have almost no testing,
-and none currently support freeing.
+Current a few allocators are provided with minimal testing.
+
+Currently none are concurrency safe.
 
 # Testing
 
@@ -46,7 +47,7 @@ wasm-pack build --release example && ls -l example/pkg/lol_alloc_example_bg.wasm
 
 Sizes of allocators in bytes (including overhead from example):
 
-FailAllocator: 195
-LeakingPageAllocator: 230
-LeakingAllocator: 356
-FreeListAllocator: 500
+- FailAllocator: 195
+- LeakingPageAllocator: 230
+- LeakingAllocator: 356
+- FreeListAllocator: 656

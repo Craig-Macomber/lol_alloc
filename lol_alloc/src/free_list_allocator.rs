@@ -56,30 +56,32 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
             let size_of_block = (**free_list).size;
             let start_of_block = *free_list as usize;
             let end_of_block = start_of_block + size_of_block;
-            let position = multiple_below(end_of_block - size, alignment);
-            if position >= start_of_block {
-                // Compute if we need a node after used space due to alignment.
-                let end_of_used = position + size;
-                if end_of_used < end_of_block {
-                    // Insert new block
-                    let new_block = end_of_used as *mut FreeListNode;
-                    (*new_block).next = *free_list;
-                    (*new_block).size = end_of_block - end_of_used;
-                    *free_list = new_block;
-                    free_list = ptr::addr_of_mut!((*new_block).next);
-                }
-                if position == start_of_block {
-                    // Remove current node from free list.
-                    *free_list = (**free_list).next;
-                } else {
-                    // Shrink free block
-                    (**free_list).size = position - start_of_block;
-                }
+            if size < end_of_block {
+                let position = multiple_below(end_of_block - size, alignment);
+                if position >= start_of_block {
+                    // Compute if we need a node after used space due to alignment.
+                    let end_of_used = position + size;
+                    if end_of_used < end_of_block {
+                        // Insert new block
+                        let new_block = end_of_used as *mut FreeListNode;
+                        (*new_block).next = *free_list;
+                        (*new_block).size = end_of_block - end_of_used;
+                        *free_list = new_block;
+                        free_list = ptr::addr_of_mut!((*new_block).next);
+                    }
+                    if position == start_of_block {
+                        // Remove current node from free list.
+                        *free_list = (**free_list).next;
+                    } else {
+                        // Shrink free block
+                        (**free_list).size = position - start_of_block;
+                    }
 
-                let ptr = position as *mut u8;
-                debug_assert!(ptr.align_offset(NODE_SIZE) == 0);
-                debug_assert!(ptr.align_offset(layout.align()) == 0);
-                return ptr;
+                    let ptr = position as *mut u8;
+                    debug_assert!(ptr.align_offset(NODE_SIZE) == 0);
+                    debug_assert!(ptr.align_offset(layout.align()) == 0);
+                    return ptr;
+                }
             }
 
             free_list = ptr::addr_of_mut!((**free_list).next);
