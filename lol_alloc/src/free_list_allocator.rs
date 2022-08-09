@@ -33,6 +33,8 @@ struct FreeListNode {
     size: usize,
 }
 
+const NODE_SIZE: usize = core::mem::size_of::<FreeListNode>();
+
 /// This is an invalid implementation of Sync.
 /// SimpleAllocator must not actually be used from multiple threads concurrently.
 unsafe impl<T: Sync> Sync for FreeListAllocator<T> {}
@@ -43,48 +45,68 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
         debug_assert!(PAGE_SIZE % layout.align() == 0);
 
         let size = full_size(layout);
+        let alignment = layout.align().max(NODE_SIZE);
         let mut free_list: *mut *mut FreeListNode = self.free_list.get();
         // search freelist
         loop {
             if *free_list == EMPTY_FREE_LIST {
                 break;
             }
-            // if (**free_list).size > size {
-            //     (*ptr).next = *free_list;
-            //     *free_list = ptr;
-            //     // TODO: Merge with next and/or previous if possible
-            //     return;
-            // }
-            // if (**free_list).size > size {
-            //     (*ptr).next = *free_list;
-            //     *free_list = ptr;
-            //     // TODO: Merge with next and/or previous if possible
-            //     return;
-            // }
+            // Try to allocate from end of block of free space.
+            let size_of_block = (**free_list).size;
+            let start_of_block = *free_list as usize;
+            let end_of_block = start_of_block + size_of_block;
+            let position = multiple_below(end_of_block - size, alignment);
+            if position >= start_of_block {
+                // Compute if we need a node after used space due to alignment.
+                let end_of_used = position + size;
+                if end_of_used < end_of_block {
+                    // Insert new block
+                    let new_block = end_of_used as *mut FreeListNode;
+                    (*new_block).next = (**free_list).next;
+                    (*new_block).size = end_of_block - end_of_used;
+                    free_list = ptr::addr_of_mut!((*new_block).next);
+                }
+                if position == start_of_block {
+                    // Remove current node from free list.
+                    *free_list = (**free_list).next;
+                } else {
+                    // Shrink free block
+                    (**free_list).size = position - start_of_block;
+                }
 
-            // free_list = ptr::addr_of_mut!((**free_list).next);
-            // if *free_list < ptr {
-            //     (*ptr).next = *free_list;
-            //     *free_list = ptr;
-            //     // TODO: Merge with next and/or previous if possible
-            //     return;
-            // }
+                let ptr = position as *mut u8;
+                debug_assert!(ptr.align_offset(NODE_SIZE) == 0);
+                debug_assert!(ptr.align_offset(layout.align()) == 0);
+                return ptr;
+            }
+
+            free_list = ptr::addr_of_mut!((**free_list).next);
         }
 
-        let requested_pages = (full_size(layout) + PAGE_SIZE - 1) / PAGE_SIZE;
-        let previous_page_count = self.grower.memory_grow(PageCount(requested_pages));
+        // Failed to find space in the free list.
+        // So allocate more space, and allocate from that.
+        // Simplest way to due that is grow the heap, and "free" the new space then recurse.
+        // This should never need to recurse more than once.
+
+        let requested_bytes = round_up(full_size(layout), PAGE_SIZE);
+        let previous_page_count = self
+            .grower
+            .memory_grow(PageCount(requested_bytes / PAGE_SIZE));
         if previous_page_count == ERROR_PAGE_COUNT {
             return null_mut();
         }
 
         let ptr = previous_page_count.size_in_bytes() as *mut u8;
-        debug_assert!(ptr.align_offset(core::mem::size_of::<FreeListNode>()) == 0);
-        debug_assert!(ptr.align_offset(layout.align()) == 0);
-        ptr
+        self.dealloc(
+            ptr,
+            Layout::from_size_align_unchecked(requested_bytes, PAGE_SIZE),
+        );
+        self.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        debug_assert!(ptr.align_offset(core::mem::size_of::<FreeListNode>()) == 0);
+        debug_assert!(ptr.align_offset(NODE_SIZE) == 0);
         let ptr = ptr as *mut FreeListNode;
         let size = full_size(layout);
         let after_new = offset_bytes(ptr, size); // Used to merge with next node if adjacent.
@@ -94,6 +116,7 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
         loop {
             if *free_list == EMPTY_FREE_LIST {
                 (*ptr).next = EMPTY_FREE_LIST;
+                (*ptr).size = size;
                 *free_list = ptr;
                 return;
             }
@@ -138,8 +161,8 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
 }
 
 fn full_size(layout: Layout) -> usize {
-    let grown = layout.size().max(core::mem::size_of::<FreeListNode>());
-    round_up(grown, core::mem::size_of::<FreeListNode>())
+    let grown = layout.size().max(NODE_SIZE);
+    round_up(grown, NODE_SIZE)
 }
 
 // From https://github.com/wackywendell/basicalloc/blob/0ad35d6308f70996f5a29b75381917f4cbfd9aef/src/allocators.rs
@@ -151,21 +174,26 @@ fn round_up(value: usize, increment: usize) -> usize {
     increment * ((value - 1) / increment + 1)
 }
 
+fn multiple_below(value: usize, increment: usize) -> usize {
+    increment * (value / increment)
+}
+
 unsafe fn offset_bytes(ptr: *mut FreeListNode, offset: usize) -> *mut FreeListNode {
     (ptr as *mut u8).offset(offset as isize) as *mut FreeListNode
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{FreeListAllocator, MemoryGrower, PageCount, ERROR_PAGE_COUNT, PAGE_SIZE};
+    use super::{
+        multiple_below, FreeListAllocator, MemoryGrower, PageCount, EMPTY_FREE_LIST, NODE_SIZE,
+    };
+    use crate::{ERROR_PAGE_COUNT, PAGE_SIZE};
     use alloc::{boxed::Box, vec::Vec};
     use core::{
         alloc::{GlobalAlloc, Layout},
         cell::{RefCell, UnsafeCell},
         ptr,
     };
-
-    use super::{FreeListNode, EMPTY_FREE_LIST};
 
     struct Allocation {
         layout: Layout,
@@ -212,8 +240,6 @@ mod tests {
         offset: usize,
     }
 
-    const NODE_SIZE: usize = core::mem::size_of::<FreeListNode>();
-
     fn free_list_content(allocator: &FreeListAllocator<RefCell<Slabby>>) -> Vec<FreeListContent> {
         let mut out = vec![];
         let grower = allocator.grower.borrow();
@@ -238,6 +264,19 @@ mod tests {
     }
 
     #[test]
+    fn multiple_below_works() {
+        assert_eq!(multiple_below(0, 8), 0);
+        assert_eq!(multiple_below(7, 8), 0);
+        assert_eq!(multiple_below(8, 8), 8);
+        assert_eq!(multiple_below(9, 8), 8);
+        assert_eq!(multiple_below(15, 8), 8);
+        assert_eq!(multiple_below(16, 8), 16);
+
+        assert_eq!(multiple_below(99, 100), 0);
+        assert_eq!(multiple_below(100099, 100), 100000);
+    }
+
+    #[test]
     fn it_works() {
         let allocator = FreeListAllocator {
             free_list: UnsafeCell::new(EMPTY_FREE_LIST),
@@ -245,15 +284,15 @@ mod tests {
         };
         assert_eq!(free_list_content(&allocator), []);
         unsafe {
-            let mut allocations: Vec<Allocation> = vec![];
-            let mut push_alloc = |size: usize, align: usize| {
+            let alloc = |size: usize, align: usize| {
                 let layout = Layout::from_size_align(size, align).unwrap();
-                allocations.push(Allocation {
+                Allocation {
                     layout,
                     ptr: allocator.alloc(layout),
-                });
+                }
             };
-            push_alloc(1, 1);
+            let free = |alloc: Allocation| allocator.dealloc(alloc.ptr, alloc.layout);
+            let alloc1 = alloc(1, 1);
             assert_eq!(allocator.grower.borrow().used_pages, 1);
             assert_eq!(
                 free_list_content(&allocator),
@@ -262,7 +301,7 @@ mod tests {
                     offset: 0, // Expect allocation at the end of first page.
                 }]
             );
-            allocator.dealloc(allocations[0].ptr, allocations[0].layout);
+            free(alloc1);
             assert_eq!(
                 free_list_content(&allocator),
                 [FreeListContent {
