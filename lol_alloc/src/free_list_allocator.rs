@@ -63,8 +63,9 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
                 if end_of_used < end_of_block {
                     // Insert new block
                     let new_block = end_of_used as *mut FreeListNode;
-                    (*new_block).next = (**free_list).next;
+                    (*new_block).next = *free_list;
                     (*new_block).size = end_of_block - end_of_used;
+                    *free_list = new_block;
                     free_list = ptr::addr_of_mut!((*new_block).next);
                 }
                 if position == start_of_block {
@@ -89,7 +90,7 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
         // Simplest way to due that is grow the heap, and "free" the new space then recurse.
         // This should never need to recurse more than once.
 
-        let requested_bytes = round_up(full_size(layout), PAGE_SIZE);
+        let requested_bytes = round_up(size, PAGE_SIZE);
         let previous_page_count = self
             .grower
             .memory_grow(PageCount(requested_bytes / PAGE_SIZE));
@@ -141,7 +142,6 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
                 return;
             }
 
-            let next_free_list = ptr::addr_of_mut!((**free_list).next);
             if *free_list < ptr {
                 // Merge onto end of current if adjacent
                 if offset_bytes(*free_list, (**free_list).size) == ptr {
@@ -151,12 +151,12 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
                     return;
                 }
                 // Create a new free list node
-                (*ptr).next = *next_free_list;
+                (*ptr).next = *free_list;
                 (*ptr).size = size;
                 *free_list = ptr;
                 return;
             }
-            free_list = next_free_list;
+            free_list = ptr::addr_of_mut!((**free_list).next);
         }
     }
 }
@@ -278,6 +278,121 @@ mod tests {
     }
 
     #[test]
+    fn populates_free_list() {
+        let allocator = FreeListAllocator {
+            free_list: UnsafeCell::new(EMPTY_FREE_LIST),
+            grower: RefCell::new(Slabby::new()),
+        };
+        assert_eq!(free_list_content(&allocator), []);
+        unsafe {
+            let free = |alloc: FreeListContent| {
+                allocator.dealloc(
+                    (allocator.grower.borrow().pages.as_ptr() as *mut u8)
+                        .offset(alloc.offset as isize),
+                    Layout::from_size_align(alloc.size, 1).unwrap(),
+                )
+            };
+            assert_eq!(allocator.grower.borrow().used_pages, 0);
+            assert_eq!(free_list_content(&allocator), []);
+
+            free(FreeListContent {
+                size: NODE_SIZE,
+                offset: NODE_SIZE * 3,
+            });
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: NODE_SIZE,
+                    offset: NODE_SIZE * 3,
+                }]
+            );
+
+            // Free before, not contiguous
+            free(FreeListContent {
+                size: NODE_SIZE,
+                offset: NODE_SIZE,
+            });
+            assert_eq!(
+                free_list_content(&allocator),
+                [
+                    FreeListContent {
+                        size: NODE_SIZE,
+                        offset: NODE_SIZE * 3,
+                    },
+                    FreeListContent {
+                        size: NODE_SIZE,
+                        offset: NODE_SIZE,
+                    }
+                ]
+            );
+
+            // Free before, contiguous
+            free(FreeListContent {
+                size: NODE_SIZE,
+                offset: 0,
+            });
+            assert_eq!(
+                free_list_content(&allocator),
+                [
+                    FreeListContent {
+                        size: NODE_SIZE,
+                        offset: NODE_SIZE * 3,
+                    },
+                    FreeListContent {
+                        size: NODE_SIZE * 2,
+                        offset: 0,
+                    }
+                ]
+            );
+
+            // Free between, contiguous
+            free(FreeListContent {
+                size: NODE_SIZE,
+                offset: NODE_SIZE * 2,
+            });
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: NODE_SIZE * 4,
+                    offset: 0,
+                },]
+            );
+
+            // Free after, contiguous
+            free(FreeListContent {
+                size: NODE_SIZE,
+                offset: NODE_SIZE * 4,
+            });
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: NODE_SIZE * 5,
+                    offset: 0,
+                },]
+            );
+
+            // Free after, not contiguous
+            free(FreeListContent {
+                size: NODE_SIZE,
+                offset: NODE_SIZE * 6,
+            });
+            assert_eq!(
+                free_list_content(&allocator),
+                [
+                    FreeListContent {
+                        size: NODE_SIZE,
+                        offset: NODE_SIZE * 6,
+                    },
+                    FreeListContent {
+                        size: NODE_SIZE * 5,
+                        offset: 0,
+                    }
+                ]
+            );
+        }
+    }
+
+    #[test]
     fn it_works() {
         let allocator = FreeListAllocator {
             free_list: UnsafeCell::new(EMPTY_FREE_LIST),
@@ -285,7 +400,7 @@ mod tests {
         };
         assert_eq!(free_list_content(&allocator), []);
         unsafe {
-            let alloc = |size: usize, align: usize| {
+            let allocate = |size: usize, align: usize| {
                 let layout = Layout::from_size_align(size, align).unwrap();
                 Allocation {
                     layout,
@@ -293,7 +408,7 @@ mod tests {
                 }
             };
             let free = |alloc: Allocation| allocator.dealloc(alloc.ptr, alloc.layout);
-            let alloc1 = alloc(1, 1);
+            let alloc = allocate(1, 1);
             assert_eq!(allocator.grower.borrow().used_pages, 1);
             assert_eq!(
                 free_list_content(&allocator),
@@ -302,11 +417,76 @@ mod tests {
                     offset: 0, // Expect allocation at the end of first page.
                 }]
             );
-            free(alloc1);
+            // Merge into end of existing chunk
+            free(alloc);
             assert_eq!(
                 free_list_content(&allocator),
                 [FreeListContent {
                     size: PAGE_SIZE,
+                    offset: 0,
+                }]
+            );
+
+            // Allocate small value to impact alignment
+            let alloc = allocate(1, 1);
+            // Allocate larger aligned value to cause a hole after it
+            let alloc_big = allocate(NODE_SIZE * 2, NODE_SIZE * 2);
+            assert_eq!(
+                free_list_content(&allocator),
+                [
+                    FreeListContent {
+                        size: NODE_SIZE,
+                        offset: PAGE_SIZE - NODE_SIZE * 2,
+                    },
+                    FreeListContent {
+                        size: PAGE_SIZE - NODE_SIZE * 4,
+                        offset: 0,
+                    },
+                ]
+            );
+
+            // Free second allocation, causing 3 way join
+            free(alloc_big);
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: PAGE_SIZE - NODE_SIZE,
+                    offset: 0,
+                }]
+            );
+
+            // Multi-page allocation
+            assert_eq!(allocator.grower.borrow().used_pages, 1);
+            let multi_page = allocate(PAGE_SIZE + 1, 1);
+            assert_eq!(allocator.grower.borrow().used_pages, 3);
+            assert_eq!(
+                free_list_content(&allocator),
+                [
+                    FreeListContent {
+                        size: PAGE_SIZE - NODE_SIZE,
+                        offset: PAGE_SIZE,
+                    },
+                    FreeListContent {
+                        size: PAGE_SIZE - NODE_SIZE,
+                        offset: 0,
+                    }
+                ]
+            );
+
+            // Free everything
+            free(alloc);
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: PAGE_SIZE * 2 - NODE_SIZE,
+                    offset: 0,
+                }]
+            );
+            free(multi_page);
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: PAGE_SIZE * 3,
                     offset: 0,
                 }]
             );
