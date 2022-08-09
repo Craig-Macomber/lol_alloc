@@ -15,7 +15,10 @@ I'd like to offer a few minimal allocator implementations targeted specifically 
 
 # Status
 
+Not production ready.
+
 Current a few allocators are provided with minimal testing.
+If you use it, please report any bugs: I expect there are some.
 
 Currently none are concurrency safe.
 
@@ -25,6 +28,19 @@ Sizes of allocators include overhead from example:
 - `LeakingPageAllocator`: 230 bytes: Allocates pages for each allocation. Operations are O(1).
 - `LeakingAllocator`: 356 bytes: Bump pointer allocator, growing the heap as needed. Operations are O(1).
 - `FreeListAllocator`: 656 bytes: Free list based allocator. Operations are O(size of free list).
+
+# Usage
+
+You can replace the `global_allocator` in `wasm32` with `FreeListAllocator` builds using:
+
+```
+#[cfg(target_arch = "wasm32")]
+use lol_alloc::FreeListAllocator;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOCATOR: FreeListAllocator = FreeListAllocator::new();
+```
 
 # Testing
 

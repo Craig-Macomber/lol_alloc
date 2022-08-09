@@ -1,9 +1,9 @@
-#![cfg(target_arch = "wasm32")]
-
 extern crate alloc;
 
+#[cfg(target_arch = "wasm32")]
 use lol_alloc::{FailAllocator, FreeListAllocator, LeakingAllocator, LeakingPageAllocator};
 
+#[cfg(target_arch = "wasm32")]
 #[global_allocator]
 static ALLOCATOR: FreeListAllocator = FreeListAllocator::new();
 
