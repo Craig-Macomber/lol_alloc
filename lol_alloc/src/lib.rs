@@ -180,6 +180,8 @@ unsafe impl<T: Sync> Sync for FreeListAllocator<T> {}
 
 unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        debug_assert!(PAGE_SIZE % layout.align() == 0);
+
         let size = full_size(layout);
         let mut free_list: *mut *mut FreeListNode = self.free_list.get();
         // search freelist
@@ -216,11 +218,14 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
         }
 
         let ptr = previous_page_count.size_in_bytes() as *mut u8;
+        debug_assert!(ptr.align_offset(core::mem::size_of::<FreeListNode>()) == 0);
+        debug_assert!(ptr.align_offset(layout.align()) == 0);
         // This assumes PAGE_SIZE is always a multiple of the required alignment, which should be true for all practical use.
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        debug_assert!(ptr.align_offset(core::mem::size_of::<FreeListNode>()) == 0);
         let ptr = ptr as *mut FreeListNode;
         let size = full_size(layout);
         let after_new = offset_bytes(ptr, size); // Used to merge with next node if adjacent.
