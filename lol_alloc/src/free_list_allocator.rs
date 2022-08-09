@@ -125,34 +125,35 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
                 // Merge new node into node after this one.
 
                 let new_size = size + (**free_list).size;
-                if offset_bytes((*ptr).next, (*(*ptr).next).size) == ptr {
+                let next = (**free_list).next;
+                if next != EMPTY_FREE_LIST && offset_bytes(next, (*next).size) == ptr {
                     // Merge into node before this one, as well as after it.
-                    (*(*ptr).next).size += new_size;
+                    (*next).size += new_size;
                     // Sine we are combining 2 existing nodes (with the new one in-between)
                     // remove one from the list.
-                    *free_list = (**free_list).next;
+                    *free_list = next;
                     return;
                 }
-
+                // Edit node in free list, moving its location and updating its size.
                 *free_list = ptr;
                 (*ptr).size = new_size;
-                (*ptr).next = (**free_list).next;
+                (*ptr).next = next;
                 return;
             }
 
             let next_free_list = ptr::addr_of_mut!((**free_list).next);
-            if *next_free_list < ptr {
-                // TODO: Merge with next and/or previous if possible
-                if offset_bytes(*next_free_list, (*(*next_free_list)).size) == ptr {
+            if *free_list < ptr {
+                // Merge onto end of current if adjacent
+                if offset_bytes(*free_list, (**free_list).size) == ptr {
                     // Merge into node before this one, as well as after it.
-                    (*(*ptr).next).size += size;
+                    (**free_list).size += size;
                     // Sine we are combining the new node into the end of an existing node, no pointer updates, just a size change.
                     return;
                 }
                 // Create a new free list node
                 (*ptr).next = *next_free_list;
                 (*ptr).size = size;
-                *next_free_list = ptr;
+                *free_list = ptr;
                 return;
             }
             free_list = next_free_list;
