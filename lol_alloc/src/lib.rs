@@ -1,5 +1,8 @@
 #![no_std]
 
+#[macro_use]
+extern crate alloc;
+
 /// A number of WebAssembly memory pages.
 #[derive(Eq, PartialEq)]
 struct PageCount(usize);
@@ -34,7 +37,9 @@ impl MemoryGrower for DefaultGrower {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn memory_grow(&self, _delta: PageCount) -> PageCount {
-        PageCount(usize::MAX)
+        // This MemoryGrower is not actually supported on non-wasm targets.
+        // Just return an out of memory error:
+        ERROR_PAGE_COUNT
     }
 }
 

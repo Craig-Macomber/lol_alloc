@@ -154,3 +154,122 @@ fn round_up(value: usize, increment: usize) -> usize {
 unsafe fn offset_bytes(ptr: *mut FreeListNode, offset: usize) -> *mut FreeListNode {
     (ptr as *mut u8).offset(offset as isize) as *mut FreeListNode
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{FreeListAllocator, MemoryGrower, PageCount, ERROR_PAGE_COUNT, PAGE_SIZE};
+    use alloc::{boxed::Box, vec::Vec};
+    use core::{
+        alloc::{GlobalAlloc, Layout},
+        cell::{RefCell, UnsafeCell},
+        ptr,
+    };
+
+    use super::{FreeListNode, EMPTY_FREE_LIST};
+
+    struct Allocation {
+        layout: Layout,
+        ptr: *mut u8,
+    }
+
+    #[derive(Clone, Copy)]
+    #[repr(C, align(65536))] // align does not appear to with with the PAGE_SIZE constant
+    struct Page([u8; PAGE_SIZE]);
+
+    struct Slabby {
+        /// Test array of paged, sequential in memory.
+        /// Note that resizing this Vec will break all pointers into it.
+        pages: Box<[Page]>,
+        used_pages: usize,
+    }
+
+    impl Slabby {
+        fn new() -> Self {
+            Slabby {
+                pages: vec![Page([0; PAGE_SIZE]); 100].into_boxed_slice(),
+                used_pages: 0,
+            }
+        }
+    }
+
+    impl MemoryGrower for RefCell<Slabby> {
+        fn memory_grow(&self, delta: PageCount) -> PageCount {
+            let mut slabby = self.borrow_mut();
+            let old_ptr = ptr::addr_of!(slabby.pages[slabby.used_pages]);
+            if slabby.used_pages + delta.0 > slabby.pages.len() {
+                return ERROR_PAGE_COUNT;
+            }
+            slabby.used_pages += delta.0;
+            debug_assert!(old_ptr.align_offset(PAGE_SIZE) == 0);
+            PageCount(old_ptr as usize / PAGE_SIZE)
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct FreeListContent {
+        size: usize,
+        /// Offset from beginning of Slabby.
+        offset: usize,
+    }
+
+    const NODE_SIZE: usize = core::mem::size_of::<FreeListNode>();
+
+    fn free_list_content(allocator: &FreeListAllocator<RefCell<Slabby>>) -> Vec<FreeListContent> {
+        let mut out = vec![];
+        let grower = allocator.grower.borrow();
+        let base = grower.pages.as_ptr() as usize;
+        unsafe {
+            let mut list = *(allocator.free_list.get());
+            while list != EMPTY_FREE_LIST {
+                assert_eq!(list.align_offset(NODE_SIZE), 0);
+                assert!(list as usize >= base);
+                assert!(
+                    (list as usize)
+                        < ptr::addr_of!(grower.pages[grower.used_pages]) as usize + PAGE_SIZE
+                );
+                out.push(FreeListContent {
+                    size: (*list).size,
+                    offset: list as usize - base,
+                });
+                list = (*list).next;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn it_works() {
+        let allocator = FreeListAllocator {
+            free_list: UnsafeCell::new(EMPTY_FREE_LIST),
+            grower: RefCell::new(Slabby::new()),
+        };
+        assert_eq!(free_list_content(&allocator), []);
+        unsafe {
+            let mut allocations: Vec<Allocation> = vec![];
+            let mut push_alloc = |size: usize, align: usize| {
+                let layout = Layout::from_size_align(size, align).unwrap();
+                allocations.push(Allocation {
+                    layout,
+                    ptr: allocator.alloc(layout),
+                });
+            };
+            push_alloc(1, 1);
+            assert_eq!(allocator.grower.borrow().used_pages, 1);
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: PAGE_SIZE - NODE_SIZE,
+                    offset: 0, // Expect allocation at the end of first page.
+                }]
+            );
+            allocator.dealloc(allocations[0].ptr, allocations[0].layout);
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: PAGE_SIZE,
+                    offset: 0,
+                }]
+            );
+        }
+    }
+}
