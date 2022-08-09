@@ -33,7 +33,10 @@ pub struct DefaultGrower;
 impl MemoryGrower for DefaultGrower {
     #[cfg(target_arch = "wasm32")]
     fn memory_grow(&self, delta: PageCount) -> PageCount {
-        PageCount(core::arch::wasm::memory_grow(0, delta.0))
+        // This should use `core::arch::wasm` instead of `core::arch::wasm32`,
+        // but `core::arch::wasm` depends on `#![feature(simd_wasm64)]` on current nightly.
+        // See https://github.com/Craig-Macomber/lol_alloc/issues/1
+        PageCount(core::arch::wasm32::memory_grow(0, delta.0))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
