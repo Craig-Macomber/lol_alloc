@@ -1,6 +1,6 @@
 #![cfg(target_arch = "wasm32")]
 
-use lol_alloc::SimpleAllocator;
+use lol_alloc::LeakingAllocator;
 use wasm_bindgen_test::*;
 
 #[global_allocator]

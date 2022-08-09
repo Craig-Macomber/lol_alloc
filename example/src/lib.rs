@@ -2,10 +2,10 @@
 
 extern crate alloc;
 
-use lol_alloc::ReusingPageAllocator;
+use lol_alloc::{FailAllocator, FreeListAllocator, LeakingAllocator, LeakingPageAllocator};
 
 #[global_allocator]
-static ALLOCATOR: ReusingPageAllocator = ReusingPageAllocator::new();
+static ALLOCATOR: FreeListAllocator = FreeListAllocator::new();
 
 use alloc::boxed::Box;
 

@@ -17,7 +17,7 @@ No support for freeing, and no test coverage.
 https://rustwasm.github.io/wasm-bindgen/wasm-bindgen-test/usage.html
 
 ```
-wasm-pack test --node
+wasm-pack test --node lol_alloc
 ```
 
 build with:
@@ -25,3 +25,16 @@ build with:
 ```
 cargo build --target wasm32-unknown-unknown
 ```
+
+Size testing:
+
+```
+wasm-pack build --release example && ls -l example/pkg/lol_alloc_example_bg.wasm
+```
+
+Sizes of allocators in bytes (including overhead from example):
+
+FailAllocator: 195
+LeakingPageAllocator: 230
+LeakingAllocator: 356
+FreeListAllocator: 500
