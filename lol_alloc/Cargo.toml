@@ -1,21 +1,13 @@
 [package]
 name = "lol_alloc"
+description = "lol_alloc: A laughably simple wasm global_allocator."
+readme = "../README.md"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/Craig-Macomber/lol_alloc"
 license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-# [lib]
-# crate-type = ["cdylib", "rlib"]
-
-# [features]
-# allocation = []
-# free = ["allocation"]
-# sub-page = ["allocation"]
-# default = ["allocation", "free", "sub-page"]
-# TODO: concurrency/atomic feature
 
 [dependencies]
 
