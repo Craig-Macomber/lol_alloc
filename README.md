@@ -20,7 +20,7 @@ Not production ready.
 Current a few allocators are provided with minimal testing.
 If you use it, please report any bugs: I expect there are some.
 
-Currently none are concurrency safe.
+Currently only `FailAllocator` and `LeakingPageAllocator` are thread-safe safe.
 
 Sizes of allocators include overhead from example:
 

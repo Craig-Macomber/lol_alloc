@@ -40,7 +40,7 @@ unsafe impl GlobalAlloc for LeakingPageAllocator {
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
 }
 
-/// A non-concurrency safe bump-pointer allocator.
+/// A non-thread safe bump-pointer allocator.
 /// Does not free or reuse memory.
 /// Efficient for small allocations.
 /// Does tolerate concurrent callers of wasm::memory_grow,

@@ -1,3 +1,5 @@
+#![cfg(target_arch = "wasm32")]
+
 use std::mem::swap;
 
 use lol_alloc::FreeListAllocator;

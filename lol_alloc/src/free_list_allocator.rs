@@ -5,7 +5,7 @@ use core::{
     ptr::{self, null_mut},
 };
 
-/// A non-concurrency safe allocator that allocates whole pages for each allocation.
+/// A non-thread safe allocator that allocates whole pages for each allocation.
 /// Very wasteful for small allocations.
 pub struct FreeListAllocator<T = DefaultGrower> {
     free_list: UnsafeCell<*mut FreeListNode>,
@@ -27,7 +27,6 @@ const EMPTY_FREE_LIST: *mut FreeListNode = usize::MAX as *mut FreeListNode;
 /// Stored at the beginning of each free segment.
 /// Note: It would be possible to fit this in 1 word (use the low bit to flag that case,
 /// then only use a second word if the allocation has size greater than 1 word)
-#[repr(C, align(4))]
 struct FreeListNode {
     next: *mut FreeListNode,
     size: usize,
@@ -182,7 +181,7 @@ fn multiple_below(value: usize, increment: usize) -> usize {
 }
 
 unsafe fn offset_bytes(ptr: *mut FreeListNode, offset: usize) -> *mut FreeListNode {
-    (ptr as *mut u8).offset(offset as isize) as *mut FreeListNode
+    (ptr as *mut u8).add(offset) as *mut FreeListNode
 }
 
 #[cfg(test)]
@@ -289,8 +288,7 @@ mod tests {
         unsafe {
             let free = |alloc: FreeListContent| {
                 allocator.dealloc(
-                    (allocator.grower.borrow().pages.as_ptr() as *mut u8)
-                        .offset(alloc.offset as isize),
+                    (allocator.grower.borrow().pages.as_ptr() as *mut u8).add(alloc.offset),
                     Layout::from_size_align(alloc.size, 1).unwrap(),
                 )
             };
