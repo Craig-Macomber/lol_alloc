@@ -5,8 +5,8 @@ use core::{
     ptr::{self, null_mut},
 };
 
-/// A non-thread safe allocator that allocates whole pages for each allocation.
-/// Very wasteful for small allocations.
+/// A non-thread safe allocator that uses a free list.
+/// Allocations and frees have runtime O(length of free list).
 pub struct FreeListAllocator<T = DefaultGrower> {
     free_list: UnsafeCell<*mut FreeListNode>,
     grower: T,
@@ -216,7 +216,7 @@ mod tests {
     impl Slabby {
         fn new() -> Self {
             Slabby {
-                pages: vec![Page([0; PAGE_SIZE]); 100].into_boxed_slice(),
+                pages: vec![Page([0; PAGE_SIZE]); 1000].into_boxed_slice(),
                 used_pages: 0,
             }
         }
@@ -242,8 +242,9 @@ mod tests {
         offset: usize,
     }
 
+    /// Enumerate and validate free list content
     fn free_list_content(allocator: &FreeListAllocator<RefCell<Slabby>>) -> Vec<FreeListContent> {
-        let mut out = vec![];
+        let mut out: Vec<FreeListContent> = vec![];
         let grower = allocator.grower.borrow();
         let base = grower.pages.as_ptr() as usize;
         unsafe {
@@ -255,10 +256,20 @@ mod tests {
                     (list as usize)
                         < ptr::addr_of!(grower.pages[grower.used_pages]) as usize + PAGE_SIZE
                 );
-                out.push(FreeListContent {
-                    size: (*list).size,
-                    offset: list as usize - base,
-                });
+                let offset = list as usize - base;
+                let size = (*list).size;
+                assert!(offset + size <= grower.used_pages * PAGE_SIZE);
+                assert!(size >= NODE_SIZE);
+                match out.last() {
+                    Some(previous) => {
+                        assert!(
+                            previous.offset > offset + size,
+                            "Free list nodes should not overlap or be adjacent"
+                        );
+                    }
+                    None => {}
+                }
+                out.push(FreeListContent { size, offset });
                 list = (*list).next;
             }
         }
@@ -278,12 +289,14 @@ mod tests {
         assert_eq!(multiple_below(100099, 100), 100000);
     }
 
+    /// Test performing frees populates the free list, correctly coalescing adjacent pages.
     #[test]
     fn populates_free_list() {
         let allocator = FreeListAllocator {
             free_list: UnsafeCell::new(EMPTY_FREE_LIST),
             grower: RefCell::new(Slabby::new()),
         };
+        allocator.grower.borrow_mut().used_pages = 1; // Fake used pages large enough to we don't fail free list validation.
         assert_eq!(free_list_content(&allocator), []);
         unsafe {
             let free = |alloc: FreeListContent| {
@@ -292,7 +305,6 @@ mod tests {
                     Layout::from_size_align(alloc.size, 1).unwrap(),
                 )
             };
-            assert_eq!(allocator.grower.borrow().used_pages, 0);
             assert_eq!(free_list_content(&allocator), []);
 
             free(FreeListContent {
@@ -487,6 +499,63 @@ mod tests {
                 free_list_content(&allocator),
                 [FreeListContent {
                     size: PAGE_SIZE * 3,
+                    offset: 0,
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn fuzz() {
+        use rand::Rng;
+        use rand_core::SeedableRng;
+        use rand_pcg::Pcg32;
+
+        let mut rng = Pcg32::seed_from_u64(0);
+
+        for _ in 0..100 {
+            let allocator = FreeListAllocator {
+                free_list: UnsafeCell::new(EMPTY_FREE_LIST),
+                grower: RefCell::new(Slabby::new()),
+            };
+
+            let allocate = |size: usize, align: usize| {
+                let layout = Layout::from_size_align(size, align).unwrap();
+                let ptr = unsafe { allocator.alloc(layout) };
+                assert!(!ptr.is_null(), "Slab Full");
+                Allocation { layout, ptr }
+            };
+            let free = |alloc: Allocation| unsafe { allocator.dealloc(alloc.ptr, alloc.layout) };
+
+            let mut allocations = vec![];
+            for _ in 0..5000 {
+                // Randomly free some allocations.
+                while !allocations.is_empty() {
+                    if rng.gen_bool(0.45) {
+                        let alloc = allocations.swap_remove(rng.gen_range(0..allocations.len()));
+                        free(alloc);
+                    } else {
+                        break;
+                    }
+                }
+                // Do a random small allocation
+                let size = rng.gen_range(1..100);
+                allocations.push(allocate(size, 1 << rng.gen_range(0..7)));
+                if rng.gen_bool(0.05) {
+                    // Do a random large allocation
+                    let size = rng.gen_range(1..(PAGE_SIZE * 10));
+                    allocations.push(allocate(size, 1 << rng.gen_range(0..16)));
+                }
+            }
+            free_list_content(&allocator);
+            while !allocations.is_empty() {
+                let alloc = allocations.swap_remove(rng.gen_range(0..allocations.len()));
+                free(alloc);
+            }
+            assert_eq!(
+                free_list_content(&allocator),
+                [FreeListContent {
+                    size: allocator.grower.borrow().used_pages * PAGE_SIZE,
                     offset: 0,
                 }]
             );
