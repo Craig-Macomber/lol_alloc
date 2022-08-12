@@ -9,13 +9,36 @@ Like [wee_alloc](https://github.com/rustwasm/wee_alloc), but smaller since I use
 I wrote `lol_alloc` to learn about allocators (I hadn't written one before) and because `wee_alloc` [seems unmaintained](https://github.com/rustwasm/wee_alloc/issues/107) and [has a leak](https://github.com/rustwasm/wee_alloc/issues/106).
 After looking at `wee_alloc`'s implementation (which I failed to understand or fix), I wanted to find out how hard it really is to make a wasm global_allocator, and it seemed like providing one could be useful to the rust wasm community.
 
+# Soundness
+
+## Use of Pointers
+
+Soundness of the pointer manipulation in this library is currently unclear.
+Since [wasm32::memory_grow](https://doc.rust-lang.org/core/arch/wasm32/fn.memory_grow.html)
+does not return a pointer there is no "original pointer" so the [Strict Provenance](https://doc.rust-lang.org/std/ptr/index.html#provenance) rules can not be followed.
+Attempting to determine if this library's use of pointes at least meets the requirements for being dereferenceable when it dereferences them is similarly challenging as that [is defined as](https://doc.rust-lang.org/std/ptr/index.html#safety):
+
+> dereferenceable: the memory range of the given size starting at the pointer must all be within the bounds of a single allocated object.
+
+The definition of "allocated object" is not clear here.
+If the growable wasm heap counts as a single allocated object, then all these allocators are likely ok (in this aspect at least).
+However if each call to `wasm32::memory_grow` is considered to create a new allocated object,
+then the free list coalescing in `FreeListAllocator` in unsound and could result in undefined behavior.
+
+## Thread Safety
+
+`LeakingAllocator` and `FreeListAllocator` are not thread-safe and use unsound implementations of Sync to allow their use as the global allocator.
+
+Multithreading is possible in wasm these days: applications have multiple threads should not use these allocators.
+
+Making thread safe versions of them is possible, but none of the allocators in this library are intended for high performance: if for some reason you have multithreaded wasm, and don't care about performance, it should be possible to modify these allocators to meet your needs, but consider just using Rust's built in allocator instead (it is thread safe, and fast).
+
 # Status
 
 Not production ready.
 
 Current a few allocators are provided with minimal testing.
-If you use it, please report any bugs:
-I expect there are some.
+If you use it, please report any bugs.
 If it actually works for you, also let me know (you can post an issue with your report).
 
 Currently only `FailAllocator` and `LeakingPageAllocator` are thread-safe safe.
