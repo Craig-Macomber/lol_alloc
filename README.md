@@ -4,7 +4,7 @@ A laughably simple wasm global_allocator.
 
 Like [wee_alloc](https://github.com/rustwasm/wee_alloc), but smaller since I used skinnier letters in the name.
 
-`lol_alloc` is a experimental wasm `global_allocator`.
+`lol_alloc` is a collection of simple wasm `global_allocator`s.
 
 I wrote `lol_alloc` to learn about allocators (I hadn't written one before) and because `wee_alloc` [seems unmaintained](https://github.com/rustwasm/wee_alloc/issues/107) and [has a leak](https://github.com/rustwasm/wee_alloc/issues/106).
 After looking at `wee_alloc`'s implementation (which I failed to understand or fix), I wanted to find out how hard it really is to make a wasm global_allocator, and it seemed like providing one could be useful to the rust wasm community.
@@ -27,28 +27,26 @@ then the free list coalescing in `FreeListAllocator` in unsound and could result
 
 ## Thread Safety
 
-`LeakingAllocator` and `FreeListAllocator` are not thread-safe and use unsound implementations of Sync to allow their use as the global allocator.
+`LeakingAllocator` and `FreeListAllocator` are NOT thread-safe and use unsound implementations of Sync to allow their use as the global allocator. Multithreading is possible in wasm these days: applications that have multiple threads should not use these allocators without wrapping them in `LockedAllocator`.
 
-Multithreading is possible in wasm these days: applications have multiple threads should not use these allocators.
-
-Making thread safe versions of them is possible, but none of the allocators in this library are intended for high performance: if for some reason you have multithreaded wasm, and don't care about performance, it should be possible to modify these allocators to meet your needs, but consider just using Rust's built in allocator instead (it is thread safe, and fast).
+`FailAllocator`, `LeakingPageAllocator`, and `LockedAllocator` are thread-safe.
 
 # Status
 
-Not production ready.
+A few projects have apparently used this library, and there have been no reported issues (none reported success either, so use at your own risk).
 
-Current a few allocators are provided with minimal testing.
+FreeListAllocator has pretty good test suite, and the rest of the allocators are trivial, and had at least minimal testing.
+
 If you use it, please report any bugs.
 If it actually works for you, also let me know (you can post an issue with your report).
 
-Currently only `FailAllocator` and `LeakingPageAllocator` are thread-safe safe.
-
-Sizes of allocators include overhead from example:
+Sizes of allocators include overhead from example (compiled with rustc 1.64.0 and wasm-pack 0.10.3):
 
 - `FailAllocator`: 195 bytes: errors on allocations. Operations are O(1),
 - `LeakingPageAllocator`: 230 bytes: Allocates pages for each allocation. Operations are O(1).
 - `LeakingAllocator`: 356 bytes: Bump pointer allocator, growing the heap as needed and does not reuse/free memory. Operations are O(1).
 - `FreeListAllocator`: 656 bytes: Free list based allocator. Operations (both allocation and freeing) are O(length of free list), but it does coalesce adjacent free list nodes.
+- `LockedAllocator<FreeListAllocator>`: 777 bytes: FreeListAllocator in a spin lock.
 
 `LeakingAllocator` should have no allocating space overhead other than for alignment.
 
@@ -61,15 +59,15 @@ Supports only `wasm32`: other targets may build, but the allocators will not wor
 
 # Usage
 
-You can replace the `global_allocator` in `wasm32` with `FreeListAllocator` builds using:
+You can replace the `global_allocator` in `wasm32` with `LockedAllocator<FreeListAllocator>` builds using:
 
 ```
 #[cfg(target_arch = "wasm32")]
-use lol_alloc::FreeListAllocator;
+use lol_alloc::{FreeListAllocator, LockedAllocator};
 
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
-static ALLOCATOR: FreeListAllocator = FreeListAllocator::new();
+static ALLOCATOR: LockedAllocator = LockedAllocator::new(FreeListAllocator::new());
 ```
 
 # Testing
@@ -84,3 +82,7 @@ Size testing:
 ```
 wasm-pack build --release example && ls -l example/pkg/lol_alloc_example_bg.wasm
 ```
+
+# Change log
+
+- 0.2.0: Add `LockedAllocator`.

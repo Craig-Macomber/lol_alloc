@@ -4,6 +4,8 @@
 #[macro_use]
 extern crate alloc;
 
+extern crate spin;
+
 /// A number of WebAssembly memory pages.
 #[derive(Eq, PartialEq)]
 struct PageCount(usize);
@@ -48,6 +50,8 @@ impl MemoryGrower for DefaultGrower {
 }
 
 mod free_list_allocator;
+mod locked_allocator;
 mod trivial_allocators;
 pub use crate::free_list_allocator::FreeListAllocator;
+pub use crate::locked_allocator::LockedAllocator;
 pub use crate::trivial_allocators::{FailAllocator, LeakingAllocator, LeakingPageAllocator};

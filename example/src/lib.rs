@@ -1,11 +1,11 @@
 extern crate alloc;
 
 #[cfg(target_arch = "wasm32")]
-use lol_alloc::FreeListAllocator;
+use lol_alloc::{FreeListAllocator, LockedAllocator};
 
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
-static ALLOCATOR: FreeListAllocator = FreeListAllocator::new();
+static ALLOCATOR: LockedAllocator = LockedAllocator::new(FreeListAllocator::new());
 
 use alloc::boxed::Box;
 

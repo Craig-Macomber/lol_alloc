@@ -34,6 +34,10 @@ struct FreeListNode {
 
 const NODE_SIZE: usize = core::mem::size_of::<FreeListNode>();
 
+// Safety: No one besides us has the raw pointer, so we can safely transfer the
+// FreeListAllocator to another thread.
+unsafe impl<T> Send for FreeListAllocator<T> {}
+
 /// This is an invalid implementation of Sync.
 /// SimpleAllocator must not actually be used from multiple threads concurrently.
 unsafe impl<T: Sync> Sync for FreeListAllocator<T> {}

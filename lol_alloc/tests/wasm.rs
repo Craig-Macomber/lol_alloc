@@ -2,11 +2,11 @@
 
 use std::mem::swap;
 
-use lol_alloc::FreeListAllocator;
+use lol_alloc::{FreeListAllocator, LockedAllocator};
 use wasm_bindgen_test::*;
 
 #[global_allocator]
-static ALLOCATOR: FreeListAllocator = FreeListAllocator::new();
+static ALLOCATOR: LockedAllocator = LockedAllocator::new(FreeListAllocator::new());
 
 #[wasm_bindgen_test]
 fn minimal() {
