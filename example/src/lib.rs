@@ -5,8 +5,8 @@ use lol_alloc::{FreeListAllocator, LockedAllocator};
 
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
-static ALLOCATOR: LockedAllocator = LockedAllocator::new(FreeListAllocator::new());
-
+static ALLOCATOR: LockedAllocator<FreeListAllocator> =
+    LockedAllocator::new(FreeListAllocator::new());
 use alloc::boxed::Box;
 
 // Box a `u8`!

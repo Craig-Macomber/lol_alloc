@@ -1,9 +1,7 @@
-use crate::FreeListAllocator;
-
 use core::alloc::{GlobalAlloc, Layout};
 
 /// A thread safe allocator created by wrapping a (possible not thread-safe) allocator in a spin-lock.
-pub struct LockedAllocator<T = FreeListAllocator> {
+pub struct LockedAllocator<T> {
     spin: spin::Mutex<T>,
 }
 

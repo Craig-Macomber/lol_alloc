@@ -51,7 +51,9 @@ impl MemoryGrower for DefaultGrower {
 
 mod free_list_allocator;
 mod locked_allocator;
+mod single_threaded_allocator;
 mod trivial_allocators;
 pub use crate::free_list_allocator::FreeListAllocator;
 pub use crate::locked_allocator::LockedAllocator;
+pub use crate::single_threaded_allocator::AssumeSingleThreaded;
 pub use crate::trivial_allocators::{FailAllocator, LeakingAllocator, LeakingPageAllocator};

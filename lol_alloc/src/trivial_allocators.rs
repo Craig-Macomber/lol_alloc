@@ -51,10 +51,6 @@ pub struct LeakingAllocator<T = DefaultGrower> {
     grower: T,
 }
 
-/// This is an invalid implementation of Sync.
-/// SimpleAllocator must not actually be used from multiple threads concurrently.
-unsafe impl Sync for LeakingAllocator {}
-
 impl LeakingAllocator<DefaultGrower> {
     pub const fn new() -> Self {
         LeakingAllocator {

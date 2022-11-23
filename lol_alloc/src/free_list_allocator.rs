@@ -38,10 +38,6 @@ const NODE_SIZE: usize = core::mem::size_of::<FreeListNode>();
 // FreeListAllocator to another thread.
 unsafe impl<T> Send for FreeListAllocator<T> {}
 
-/// This is an invalid implementation of Sync.
-/// SimpleAllocator must not actually be used from multiple threads concurrently.
-unsafe impl<T: Sync> Sync for FreeListAllocator<T> {}
-
 unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // This assumes PAGE_SIZE is always a multiple of the required alignment, which should be true for all practical use.

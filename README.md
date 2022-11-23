@@ -14,6 +14,8 @@ After looking at `wee_alloc`'s implementation (which I failed to understand or f
 You can replace the `global_allocator` in `LockedAllocator<FreeListAllocator>` in `wasm32` with builds using:
 
 ```rust
+extern crate alloc;
+
 #[cfg(target_arch = "wasm32")]
 use lol_alloc::{FreeListAllocator, LockedAllocator};
 
@@ -22,9 +24,79 @@ use lol_alloc::{FreeListAllocator, LockedAllocator};
 static ALLOCATOR: LockedAllocator<FreeListAllocator> = LockedAllocator::new(FreeListAllocator::new());
 ```
 
-# Soundness
+For slightly smaller file size and slightly better performance, single threaded WASM applications can use `AssumeSingleThreaded` instead of `LockedAllocator`:
 
-## Use of Pointers
+```rust
+extern crate alloc;
+
+use lol_alloc::{AssumeSingleThreaded, FreeListAllocator};
+
+// SAFETY: This application is single threaded, so using AssumeSingleThreaded is allowed.
+#[global_allocator]
+static ALLOCATOR: AssumeSingleThreaded<FreeListAllocator> =
+    unsafe { AssumeSingleThreaded::new(FreeListAllocator::new()) };
+```
+
+Applications which do not need any allocator can use `FailAllocator`:
+
+```rust
+extern crate alloc;
+
+#[cfg(target_arch = "wasm32")]
+use lol_alloc::FailAllocator;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOCATOR: FailAllocator = FailAllocator;
+```
+
+Applications which only do a bounded small number of allocations and thus don't require freeing can use one of the leaking allocators.
+`LeakingPageAllocator` (shown below), `AssumeSingleThreaded<LeakingAllocator>` and `LockedAllocator<LeakingAllocator>` are the best options for this case:
+
+```rust
+extern crate alloc;
+
+#[cfg(target_arch = "wasm32")]
+use lol_alloc::LeakingPageAllocator;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static ALLOCATOR: LeakingPageAllocator = LeakingPageAllocator;
+```
+
+# Thread Safety
+
+`LeakingAllocator` and `FreeListAllocator` are NOT `Sync` and must be wrapped in either `LockedAllocator` or the unsafe `AssumeSingleThreaded` to assign to a static (this is enforced by the Rust type system).
+Multithreading is possible in wasm these days: do not use `AssumeSingleThreaded` unless you are confident that all allocations and freeing will happen from a single thread.
+
+`FailAllocator`, `LeakingPageAllocator` are thread-safe and do not need any wrapping.
+
+# Status
+
+A few projects have apparently used this library, and there have been no reported issues (none reported success either, so use at your own risk).
+
+FreeListAllocator has pretty good test suite, and the rest of the allocators are trivial, and had at least minimal testing.
+
+If you use it, please report any bugs.
+If it actually works for you, also let me know (you can post an issue with your report).
+
+Sizes of allocators include overhead from example (compiled with rustc 1.65.0 and wasm-pack 0.10.3):
+
+- `FailAllocator`: 195 bytes: errors on allocations. Operations are O(1).
+- `LeakingPageAllocator`: 230 bytes: Allocates pages for each allocation. Operations are O(1).
+- `LeakingAllocator`: Bump pointer allocator, growing the heap as needed and does not reuse/free memory. Operations are O(1). No allocation space overhead other than for alignment.
+  - `AssumeSingleThreaded<LeakingAllocator>`: 356 bytes.
+  - `LockedAllocator<LeakingAllocator>`: 484 bytes.
+- `FreeListAllocator`: Free list based allocator. Operations (both allocation and freeing) are O(length of free list), but it does coalesce adjacent free list nodes. Rounds allocations up to at least 2 words in size, but otherwise should use all the space. Even gaps from high alignment allocations end up in its free list for use by smaller allocations.
+  - `AssumeSingleThreaded<FreeListAllocator>`: 654 bytes.
+  - `LockedAllocator<FreeListAllocator>`: 775 bytes.
+- Builtin Rust allocator: 5034 bytes.
+
+If you can afford the extra code size, use the builtin rust allocator: it is a much better allocator.
+
+Supports only `wasm32`: other targets may build, but the allocators will not work on them (except: `FailAllocator`, it errors on all platforms just fine).
+
+# Soundness
 
 Soundness of the pointer manipulation in this library is currently unclear.
 Since [wasm32::memory_grow](https://doc.rust-lang.org/core/arch/wasm32/fn.memory_grow.html)
@@ -37,38 +109,6 @@ The definition of "allocated object" is not clear here.
 If the growable wasm heap counts as a single allocated object, then all these allocators are likely ok (in this aspect at least).
 However if each call to `wasm32::memory_grow` is considered to create a new allocated object,
 then the free list coalescing in `FreeListAllocator` in unsound and could result in undefined behavior.
-
-## Thread Safety
-
-`LeakingAllocator` and `FreeListAllocator` are NOT thread-safe and use unsound implementations of Sync to allow their use as the global allocator. Multithreading is possible in wasm these days: applications that have multiple threads should not use these allocators without wrapping them in `LockedAllocator`.
-
-`FailAllocator`, `LeakingPageAllocator`, and `LockedAllocator` are thread-safe.
-
-# Status
-
-A few projects have apparently used this library, and there have been no reported issues (none reported success either, so use at your own risk).
-
-FreeListAllocator has pretty good test suite, and the rest of the allocators are trivial, and had at least minimal testing.
-
-If you use it, please report any bugs.
-If it actually works for you, also let me know (you can post an issue with your report).
-
-Sizes of allocators include overhead from example (compiled with rustc 1.64.0 and wasm-pack 0.10.3):
-
-- `FailAllocator`: 195 bytes: errors on allocations. Operations are O(1).
-- `LeakingPageAllocator`: 230 bytes: Allocates pages for each allocation. Operations are O(1).
-- `LeakingAllocator`: 356 bytes: Bump pointer allocator, growing the heap as needed and does not reuse/free memory. Operations are O(1).
-- `FreeListAllocator`: 656 bytes: Free list based allocator. Operations (both allocation and freeing) are O(length of free list), but it does coalesce adjacent free list nodes.
-- `LockedAllocator<FreeListAllocator>`: 777 bytes: FreeListAllocator in a spin lock.
-
-`LeakingAllocator` should have no allocating space overhead other than for alignment.
-
-`FreeListAllocator` rounds allocations up to at least 2 words in size, but otherwise should use all the space. Even gaps from high alignment allocations end up in its free list for use by smaller allocations.
-
-Builtin rust allocator is 5053 bytes in this same test.
-If you can afford the extra code size, use it: its a much better allocator.
-
-Supports only `wasm32`: other targets may build, but the allocators will not work on them (except: `FailAllocator`, it errors on all platforms just fine).
 
 # Testing
 
@@ -85,4 +125,12 @@ wasm-pack build --release example && wc -c example/pkg/lol_alloc_example_bg.wasm
 
 # Change log
 
-- 0.2.0: Add `LockedAllocator`.
+## 0.3.0:
+
+- Add `AssumeSingleThreaded`.
+- Remove unsound `Sync` implementations for `FreeListAllocator` and `LeakingAllocator`: use `AssumeSingleThreaded` and its unsafe `AssumeSingleThreaded::new` function instead: this puts all known safety issues in this library behind an unsafe function.
+- Remove default `FreeListAllocator` type parameter from `LockedAllocator`.
+
+## 0.2.0:
+
+- Add `LockedAllocator`.
