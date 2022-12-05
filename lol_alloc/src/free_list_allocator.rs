@@ -7,6 +7,8 @@ use core::{
 
 /// A non-thread safe allocator that uses a free list.
 /// Allocations and frees have runtime O(length of free list).
+///
+/// The free list is kept sorted by address, and adjacent blocks of memory are coalesced when inserting new blocks.
 pub struct FreeListAllocator<T = DefaultGrower> {
     free_list: UnsafeCell<*mut FreeListNode>,
     grower: T,

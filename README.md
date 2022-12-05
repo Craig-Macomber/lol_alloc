@@ -11,7 +11,7 @@ After looking at `wee_alloc`'s implementation (which I failed to understand or f
 
 # Usage
 
-You can replace the `global_allocator` in `LockedAllocator<FreeListAllocator>` in `wasm32` with builds using:
+You can replace the `global_allocator` with `LockedAllocator<FreeListAllocator>` for `wasm32` builds using:
 
 ```rust
 extern crate alloc;
@@ -95,6 +95,15 @@ Sizes of allocators include overhead from example (compiled with rustc 1.65.0 an
 If you can afford the extra code size, use the builtin rust allocator: it is a much better allocator.
 
 Supports only `wasm32`: other targets may build, but the allocators will not work on them (except: `FailAllocator`, it errors on all platforms just fine).
+
+# Performance
+
+Asymptotic behavior is documented in the above status section along with code size.
+
+These allocators are all optimized for simplicity (and thus code size and maintainability), and not runtime performance.
+Runtime performance data for them them (and comparing to the built in allocator) has not been collected but would be interesting: feel free to send patches with benchmarks and/or performance data.
+
+If you care about runtime performance, you should probably use the built in allocator, or at least carefully measure the impact of using any of these allocators on your code.
 
 # Soundness
 
