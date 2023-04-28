@@ -19,8 +19,10 @@ unsafe impl GlobalAlloc for FailAllocator {
 /// Allocator that allocates whole pages for each allocation.
 /// Very wasteful for small allocations.
 /// Does not free or reuse memory.
+#[cfg(target_arch = "wasm32")]
 pub struct LeakingPageAllocator;
 
+#[cfg(target_arch = "wasm32")]
 unsafe impl GlobalAlloc for LeakingPageAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // This assumes PAGE_SIZE is always a multiple of the required alignment, which should be true for all practical use.
@@ -51,6 +53,7 @@ pub struct LeakingAllocator<T = DefaultGrower> {
     grower: T,
 }
 
+#[cfg(target_arch = "wasm32")]
 impl LeakingAllocator<DefaultGrower> {
     pub const fn new() -> Self {
         LeakingAllocator {

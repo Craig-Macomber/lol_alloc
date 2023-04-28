@@ -1,6 +1,6 @@
 use core::alloc::{GlobalAlloc, Layout};
 
-/// A non thread safe allocator created by wrapping an allocator in `Sync` implementation that assumes all use is from the same thread.
+/// A non-thread safe allocator created by wrapping an allocator in a `Sync` implementation that assumes all use is from the same thread.
 /// Using this (and thus defeating Rust's thread safety checking) is useful due to global allocators having to be stored in statics,
 /// which requires `Sync` even in single threaded applications.
 pub struct AssumeSingleThreaded<T> {

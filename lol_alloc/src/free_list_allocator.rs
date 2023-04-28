@@ -14,6 +14,7 @@ pub struct FreeListAllocator<T = DefaultGrower> {
     grower: T,
 }
 
+#[cfg(target_arch = "wasm32")]
 impl FreeListAllocator<DefaultGrower> {
     pub const fn new() -> Self {
         FreeListAllocator {
@@ -205,12 +206,11 @@ mod tests {
     }
 
     #[derive(Clone, Copy)]
-    #[repr(C, align(65536))] // align does not appear to with with the PAGE_SIZE constant
+    #[repr(C, align(65536))] // align does not appear to work with the PAGE_SIZE constant
     struct Page([u8; PAGE_SIZE]);
 
     struct Slabby {
-        /// Test array of paged, sequential in memory.
-        /// Note that resizing this Vec will break all pointers into it.
+        /// Test array of pages, sequential in memory.
         pages: Box<[Page]>,
         used_pages: usize,
     }

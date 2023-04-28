@@ -30,22 +30,17 @@ trait MemoryGrower {
     fn memory_grow(&self, delta: PageCount) -> PageCount;
 }
 
+/// Stateless heap grower.
+/// On wasm32, provides a default implementation of [MemoryGrower].
 pub struct DefaultGrower;
 
+#[cfg(target_arch = "wasm32")]
 impl MemoryGrower for DefaultGrower {
-    #[cfg(target_arch = "wasm32")]
     fn memory_grow(&self, delta: PageCount) -> PageCount {
         // This should use `core::arch::wasm` instead of `core::arch::wasm32`,
         // but `core::arch::wasm` depends on `#![feature(simd_wasm64)]` on current nightly.
         // See https://github.com/Craig-Macomber/lol_alloc/issues/1
         PageCount(core::arch::wasm32::memory_grow(0, delta.0))
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn memory_grow(&self, _delta: PageCount) -> PageCount {
-        // This MemoryGrower is not actually supported on non-wasm targets.
-        // Just return an out of memory error:
-        ERROR_PAGE_COUNT
     }
 }
 
@@ -53,7 +48,10 @@ mod free_list_allocator;
 mod locked_allocator;
 mod single_threaded_allocator;
 mod trivial_allocators;
+#[cfg(target_arch = "wasm32")]
 pub use crate::free_list_allocator::FreeListAllocator;
 pub use crate::locked_allocator::LockedAllocator;
 pub use crate::single_threaded_allocator::AssumeSingleThreaded;
-pub use crate::trivial_allocators::{FailAllocator, LeakingAllocator, LeakingPageAllocator};
+pub use crate::trivial_allocators::FailAllocator;
+#[cfg(target_arch = "wasm32")]
+pub use crate::trivial_allocators::{LeakingAllocator, LeakingPageAllocator};

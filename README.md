@@ -134,6 +134,11 @@ wasm-pack build --release example && wc -c example/pkg/lol_alloc_example_bg.wasm
 
 # Change log
 
+## 0.4.0:
+
+- Make implementations which are wasm only not available on other targets, instead of failing at runtime.
+- Hint [docs.rs](https://docs.rs/) to only build for wasm.
+
 ## 0.3.0:
 
 - Add `AssumeSingleThreaded`.
