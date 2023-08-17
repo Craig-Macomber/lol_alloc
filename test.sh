@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euxo pipefail
+set -eux -o pipefail
 
 cargo test
 wasm-pack test --node lol_alloc
