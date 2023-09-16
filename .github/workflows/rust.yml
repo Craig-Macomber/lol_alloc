@@ -19,5 +19,7 @@ jobs:
         run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
       - name: Full tests
         run: ./test.sh
