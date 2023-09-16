@@ -1,5 +1,6 @@
 [package]
 name = "lol_alloc_example"
+description = "Example use of lol_alloc"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/Craig-Macomber/lol_alloc"
