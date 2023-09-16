@@ -1,5 +1,6 @@
 [workspace]
 members = ["./lol_alloc", "./example"] # , "./test", "./example"
+resolver = "2"
 
 [profile.release]
 lto = true
