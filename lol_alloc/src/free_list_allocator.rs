@@ -171,7 +171,8 @@ fn full_size(layout: Layout) -> usize {
 }
 
 /// Round up value to the nearest multiple of increment, which must be a
-/// power of 2.
+/// power of 2. If `value` is a multiple of increment, it is returned
+/// unchanged.
 fn round_up(value: usize, increment: usize) -> usize {
     debug_assert!(increment.is_power_of_two());
 
@@ -183,7 +184,8 @@ fn round_up(value: usize, increment: usize) -> usize {
 }
 
 /// Round down value to the nearest multiple of increment, which must be a
-/// power of 2.
+/// power of 2. If `value` is a multiple of `increment`, it is returned
+/// unchanged.
 fn multiple_below(value: usize, increment: usize) -> usize {
     debug_assert!(increment.is_power_of_two());
 
@@ -201,7 +203,8 @@ unsafe fn offset_bytes(ptr: *mut FreeListNode, offset: usize) -> *mut FreeListNo
 #[cfg(test)]
 mod tests {
     use super::{
-        multiple_below, FreeListAllocator, MemoryGrower, PageCount, EMPTY_FREE_LIST, NODE_SIZE,
+        multiple_below, round_up, FreeListAllocator, MemoryGrower, PageCount, EMPTY_FREE_LIST,
+        NODE_SIZE,
     };
     use crate::{ERROR_PAGE_COUNT, PAGE_SIZE};
     use alloc::{boxed::Box, vec::Vec};
@@ -287,6 +290,19 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn round_up_works() {
+        assert_eq!(round_up(0, 8), 0);
+        assert_eq!(round_up(7, 8), 8);
+        assert_eq!(round_up(8, 8), 8);
+        assert_eq!(round_up(9, 8), 16);
+        assert_eq!(round_up(15, 8), 16);
+        assert_eq!(round_up(16, 8), 16);
+
+        assert_eq!(round_up(127, 128), 128);
+        assert_eq!(round_up(100223, 128), 100224);
     }
 
     #[test]
