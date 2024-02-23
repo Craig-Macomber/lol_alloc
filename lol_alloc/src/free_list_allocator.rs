@@ -170,15 +170,27 @@ fn full_size(layout: Layout) -> usize {
     round_up(grown, NODE_SIZE)
 }
 
-// From https://github.com/wackywendell/basicalloc/blob/0ad35d6308f70996f5a29b75381917f4cbfd9aef/src/allocators.rs
-// Round up value to the nearest multiple of increment
+/// Round up value to the nearest multiple of increment, which must be a
+/// power of 2.
 fn round_up(value: usize, increment: usize) -> usize {
     debug_assert!(increment.is_power_of_two());
+
+    // This effectively computes `value.div_ceil(increment) * increment`,
+    // but in a way that takes advantage of the fact that `increment` is
+    // always a power of two to avoid using an integer divide, since that
+    // wouldn't always get optimized out.
     (value + (increment - 1)) & increment.wrapping_neg()
 }
 
+/// Round down value to the nearest multiple of increment, which must be a
+/// power of 2.
 fn multiple_below(value: usize, increment: usize) -> usize {
     debug_assert!(increment.is_power_of_two());
+
+    // This effectively computes `value / increment * increment`, but in a way
+    // that takes advantage of the fact that `increment` is always a power of
+    // two to avoid using an integer divide, since that wouldn't always get
+    // optimized out.
     value & increment.wrapping_neg()
 }
 
