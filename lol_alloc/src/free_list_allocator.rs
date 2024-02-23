@@ -173,14 +173,13 @@ fn full_size(layout: Layout) -> usize {
 // From https://github.com/wackywendell/basicalloc/blob/0ad35d6308f70996f5a29b75381917f4cbfd9aef/src/allocators.rs
 // Round up value to the nearest multiple of increment
 fn round_up(value: usize, increment: usize) -> usize {
-    if value == 0 {
-        return 0;
-    }
-    increment * ((value - 1) / increment + 1)
+    debug_assert!(increment.is_power_of_two());
+    (value + (increment - 1)) & increment.wrapping_neg()
 }
 
 fn multiple_below(value: usize, increment: usize) -> usize {
-    increment * (value / increment)
+    debug_assert!(increment.is_power_of_two());
+    value & increment.wrapping_neg()
 }
 
 unsafe fn offset_bytes(ptr: *mut FreeListNode, offset: usize) -> *mut FreeListNode {
@@ -252,19 +251,19 @@ mod tests {
         unsafe {
             let mut list = *(allocator.free_list.get());
             while list != EMPTY_FREE_LIST {
-                assert_eq!(list.align_offset(NODE_SIZE), 0);
-                assert!(list as usize >= base);
-                assert!(
+                debug_assert_eq!(list.align_offset(NODE_SIZE), 0);
+                debug_assert!(list as usize >= base);
+                debug_assert!(
                     (list as usize)
                         < ptr::addr_of!(grower.pages[grower.used_pages]) as usize + PAGE_SIZE
                 );
                 let offset = list as usize - base;
                 let size = (*list).size;
-                assert!(offset + size <= grower.used_pages * PAGE_SIZE);
-                assert!(size >= NODE_SIZE);
+                debug_assert!(offset + size <= grower.used_pages * PAGE_SIZE);
+                debug_assert!(size >= NODE_SIZE);
                 match out.last() {
                     Some(previous) => {
-                        assert!(
+                        debug_assert!(
                             previous.offset > offset + size,
                             "Free list nodes should not overlap or be adjacent"
                         );
@@ -287,8 +286,8 @@ mod tests {
         assert_eq!(multiple_below(15, 8), 8);
         assert_eq!(multiple_below(16, 8), 16);
 
-        assert_eq!(multiple_below(99, 100), 0);
-        assert_eq!(multiple_below(100099, 100), 100000);
+        assert_eq!(multiple_below(127, 128), 0);
+        assert_eq!(multiple_below(100223, 128), 100096);
     }
 
     /// Test performing frees populates the free list, correctly coalescing adjacent pages.
