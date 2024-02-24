@@ -134,6 +134,11 @@ wasm-pack build --release example && wc -c example/pkg/lol_alloc_example_bg.wasm
 
 # Change log
 
+## 0.4.1:
+
+- [Avoid assertion messages in free_list_allocator in release builds](https://github.com/Craig-Macomber/lol_alloc/pull/7).
+  This should improve code size and performance mainly when the size or alignment of allocations is not fully inlined by the compiler.
+
 ## 0.4.0:
 
 - Make implementations which are wasm only not available on other targets, instead of failing at runtime.
