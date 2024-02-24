@@ -176,11 +176,11 @@ fn full_size(layout: Layout) -> usize {
 fn round_up(value: usize, increment: usize) -> usize {
     debug_assert!(increment.is_power_of_two());
 
-    // This effectively computes `value.div_ceil(increment) * increment`,
-    // but in a way that takes advantage of the fact that `increment` is
+    // Compute `value.div_ceil(increment) * increment`,
+    // in a way that takes advantage of the fact that `increment` is
     // always a power of two to avoid using an integer divide, since that
     // wouldn't always get optimized out.
-    (value + (increment - 1)) & increment.wrapping_neg()
+    multiple_below(value + (increment - 1), increment)
 }
 
 /// Round down value to the nearest multiple of increment, which must be a
@@ -189,7 +189,7 @@ fn round_up(value: usize, increment: usize) -> usize {
 fn multiple_below(value: usize, increment: usize) -> usize {
     debug_assert!(increment.is_power_of_two());
 
-    // This effectively computes `value / increment * increment`, but in a way
+    // Compute `value / increment * increment` in a way
     // that takes advantage of the fact that `increment` is always a power of
     // two to avoid using an integer divide, since that wouldn't always get
     // optimized out.
